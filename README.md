@@ -20,7 +20,7 @@ It is a small Node 24 + TypeScript service with no runtime dependencies. State l
 - **Install.** The last step shows an Install button (`stremio://…/stremio/{cfg}/manifest.json`) and the https address to copy.
 - **`{cfg}`** is a random 128-bit account id plus a truncated HMAC of it (44 URL-safe characters). It names your account and carries no credentials. Treat it as private anyway: it is the key to your configure page.
 - **Baseline.** The first poll after linking only records where your library is. Nothing old is imported.
-- **Polling.** A subtitles request from Stremio wakes that account: it is polled every 30 s until 20 minutes pass with no change (never more than once per 10 s). Every account is also polled every 15 minutes.
+- **Polling.** A subtitles request from Stremio wakes that account: it is polled every 30 s until 20 minutes pass with no change (never more than once per 10 s). Every account is also polled every 5 minutes, which is how a "mark as watched" made without playing anything is picked up.
 - **Needs sign-in.** If Stremio rejects the stored key, or the TofuTracker token is revoked (401), the account stops polling and the manifest name says what to redo (`TofuTracker (sign in to Stremio again)`). Open the configure page from Stremio's addon settings to fix it; your addon link stays the same.
 
 ### What a library change means

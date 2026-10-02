@@ -60,16 +60,20 @@ export const parseLibraryItem = (raw: unknown): LibraryItem | null => {
   const state = raw["state"];
   const mtime = toMillis(raw["_mtime"]);
   if (!id || !isRecord(state) || mtime === null) return null;
+  const type = text(raw["type"]) ?? "";
+  // stremio-core renames this one field to snake case; accept both spellings.
+  // A movie marked as watched before it was ever played has no video id; its
+  // only video is the item itself.
+  const videoId = text(state["video_id"]) ?? text(state["videoId"]) ?? (type === "movie" ? id : null);
   return {
     id,
     removed: raw["removed"] === true,
     temp: raw["temp"] === true,
     mtime,
     snapshot: {
-      type: text(raw["type"]) ?? "",
+      type,
       name: text(raw["name"]) ?? id,
-      // stremio-core renames this one field to snake case; accept both spellings.
-      videoId: text(state["video_id"]) ?? text(state["videoId"]),
+      videoId,
       timeOffset: count(state["timeOffset"]),
       timeWatched: count(state["timeWatched"]),
       overall: count(state["overallTimeWatched"]),

@@ -82,7 +82,7 @@ test("parsing ignores unknown fields and skips items that are not library items"
     assert.equal(parseLibraryItem(bad), null);
   }
   const odd = parseLibraryItem({ _id: "tt2", type: "movie", _mtime: 1_700_000_000_000, state: { timeOffset: "x", timesWatched: -3, duration: null, video_id: null, watched: "" } });
-  assert.deepEqual([odd?.snapshot.timeOffset, odd?.snapshot.timesWatched, odd?.snapshot.duration, odd?.snapshot.videoId, odd?.snapshot.watched], [0, 0, 0, null, null]);
+  assert.deepEqual([odd?.snapshot.timeOffset, odd?.snapshot.timesWatched, odd?.snapshot.duration, odd?.snapshot.videoId, odd?.snapshot.watched], [0, 0, 0, "tt2", null]);
 });
 
 test("meta entries tolerate malformed rows and ISO timestamps", () => {

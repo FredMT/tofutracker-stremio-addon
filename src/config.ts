@@ -33,7 +33,7 @@ export type Config = {
 
 export const DEFAULT_POLL: PollTuning = {
   activeIntervalMs: 30_000,
-  baselineIntervalMs: 15 * 60_000,
+  baselineIntervalMs: 5 * 60_000,
   activeWindowMs: 20 * 60_000,
   // Stremio pushes the playing item to its API every 90 s at most, so a quiet
   // item is only "paused" once a push is clearly overdue.
