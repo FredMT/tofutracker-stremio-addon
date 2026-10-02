@@ -116,6 +116,23 @@ test("the bare manifest requires configuration and allows every origin", async (
   assert.deepEqual(res.json["types"], ["movie", "series"]);
   assert.deepEqual(res.json["catalogs"], []);
   for (const field of ["id", "name", "description", "version"]) assert.equal(typeof res.json[field], "string", field);
+  assert.equal(res.json["logo"], `${BASE}/logo.png`);
+  assert.equal(res.json["background"], `${BASE}/background.png`);
+});
+
+test("the logo and background are PNGs served to every origin", async () => {
+  for (const [name, width, height] of [["logo.png", 256, 256], ["background.png", 1024, 768]] as const) {
+    const res = await fetch(`${origin}/stremio/${name}`);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("content-type"), "image/png");
+    assert.equal(res.headers.get("access-control-allow-origin"), "*");
+    const bytes = Buffer.from(await res.arrayBuffer());
+    assert.deepEqual([...bytes.subarray(0, 8)], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    assert.equal(bytes.readUInt32BE(16), width, `${name} width`);
+    assert.equal(bytes.readUInt32BE(20), height, `${name} height`);
+  }
+  assert.equal((await call("GET", "/stremio/constructor")).status, 404);
+  assert.equal((await call("GET", "/stremio/logo.png/extra")).status, 404);
 });
 
 test("health is 200 and reveals nothing", async () => {
@@ -160,6 +177,8 @@ test("configure flow: link TofuTracker, sign in with a Stremio link code, instal
   assert.equal(manifest.status, 200);
   assert.equal(manifest.json["name"], "TofuTracker");
   assert.equal(manifest.json["behaviorHints"].configurationRequired, false);
+  assert.equal(manifest.json["logo"], `${BASE}/logo.png`);
+  assert.equal(manifest.json["background"], `${BASE}/background.png`);
   assert.equal(manifest.headers.get("access-control-allow-origin"), "*");
 
   // Stored credentials are encrypted and bound to the account.

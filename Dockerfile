@@ -16,6 +16,7 @@ ENV NODE_ENV=production \
 WORKDIR /app
 COPY --from=build /app/package.json ./
 COPY --from=build /app/dist ./dist
+COPY assets ./assets
 # uid 1000 is the `node` user here and `fred` on the VPS. /data is a volume that
 # keeps the SQLite file; the rest of the filesystem can be read-only.
 RUN mkdir -p /data && chown 1000:1000 /data
