@@ -1,0 +1,54 @@
+# Deploy: see README.md. Run from ~/projects/stremio-addon on the VPS.
+# Its own compose project: restarting it cannot disturb the scrobbler, the
+# catalog mirror or the Comet stack.
+name: stremio-addon
+
+services:
+  stremio-addon:
+    build: .
+    image: tofutracker-stremio-addon:latest
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file:
+      # STREMIO_CREDS_KEY (required), optionally PUBLIC_URL, SCROBBLER_URL. See .env.example.
+      - ${HOME}/secrets/stremio-addon.env
+    environment:
+      DATA_DIR: /data
+      PORT: "7000"
+    volumes:
+      - state:/data # the SQLite file; everything else is read-only
+    # No published ports. cloudflared (in the scrobbler project) reaches this
+    # service as http://stremio-addon:7000 over scrobbler_default; the same
+    # network gives access to http://scrobbler:8080 and outbound internet.
+    networks:
+      scrobbler:
+        aliases:
+          - stremio-addon
+    healthcheck:
+      test: ["CMD", "node", "dist/healthcheck.js"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 64
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+networks:
+  scrobbler:
+    external: true
+    name: scrobbler_default
+
+volumes:
+  state:
