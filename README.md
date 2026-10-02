@@ -16,6 +16,7 @@ It is a small Node 24 + TypeScript service with no runtime dependencies. State l
 ```
 
 - **Sign-in.** The configure page links two accounts. TofuTracker uses the device-code flow (C2): the page shows a code, you approve it on tofutracker.com. Stremio uses, in order of preference, a **link code** (Stremio's own `link.stremio.com` flow, works for Google and Facebook accounts and never shows us a password), **email and password** (exchanged once at `api.strem.io/api/login`, then forgotten) or a **pasted auth key**.
+- **Link code convenience.** The Stremio step opens the `link` URL from Stremio's reply in a new tab and has a Copy code button. The last step points to `tofutracker.com/settings/scrobbling`, where the connection can be revoked.
 - **Install.** The last step shows an Install button (`stremio://…/stremio/{cfg}/manifest.json`) and the https address to copy.
 - **`{cfg}`** is a random 128-bit account id plus a truncated HMAC of it (44 URL-safe characters). It names your account and carries no credentials. Treat it as private anyway: it is the key to your configure page.
 - **Baseline.** The first poll after linking only records where your library is. Nothing old is imported.
@@ -82,6 +83,7 @@ Two subkeys are derived from `STREMIO_CREDS_KEY` with HKDF: one for AES-256-GCM,
 
 - Passwords, auth keys and tokens are never logged (the logger redacts field names that could hold them) and never returned by the API. The password goes from the browser to this service to Stremio and is dropped.
 - The setup API under `/stremio/api` is for the configure page only: same origin, JSON only, 16 KiB bodies, per-IP rate limits, no CORS headers. Only the addon protocol routes (manifest, subtitles) send `Access-Control-Allow-Origin: *`, which Stremio requires.
+- The logo (`/stremio/logo.png`, 256x256) and background (`/stremio/background.png`) in the manifests are static PNGs from `assets/`, regenerated with `node scripts/make-assets.ts`.
 - The configure page ships a CSP with a per-response nonce, `frame-ancestors 'none'` and no external scripts.
 - The container runs as uid 1000 with a read-only filesystem, no capabilities and a memory limit. It publishes no ports.
 
@@ -138,6 +140,8 @@ src/scrobbler-client.ts  scrobbler client (pairing C2, events C1)
 src/db.ts                SQLite store (accounts, item state, outbox, setup)
 src/crypto.ts, cfg.ts    AES-256-GCM, HMAC, the {cfg} segment
 src/manifest.ts, events.ts, ids.ts, config.ts, log.ts, healthcheck.ts
+assets/                  logo.png and background.png served by the manifest routes
+scripts/make-assets.ts   generates assets/ (no dependencies)
 test/                    node:test; fake Stremio and scrobbler HTTP servers in helpers.ts
 ```
 
