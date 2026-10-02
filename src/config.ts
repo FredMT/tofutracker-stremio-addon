@@ -1,3 +1,5 @@
+import { DEFAULT_CINEMETA_URL } from "./cinemeta.ts";
+
 export type PollTuning = {
   /** Poll interval while an account is "active" (a subtitles ping or a recent change). */
   activeIntervalMs: number;
@@ -18,6 +20,8 @@ export type Config = {
   /** Path prefix the service is mounted under, without a trailing slash ("" for the root). */
   basePath: string;
   scrobblerUrl: string;
+  /** Cinemeta base URL (exact TVDB ids for `tt…:S:E` videos). */
+  cinemetaUrl: string;
   credsKey: Buffer;
   dataDir: string;
   port: number;
@@ -62,6 +66,7 @@ export const loadConfig = (env: Record<string, string | undefined>): Config => {
     publicUrl,
     basePath: stripTrailingSlash(publicUrl.pathname),
     scrobblerUrl: stripTrailingSlash(env["SCROBBLER_URL"] || "http://scrobbler:8080"),
+    cinemetaUrl: stripTrailingSlash(env["CINEMETA_URL"] || DEFAULT_CINEMETA_URL),
     credsKey: parseCredsKey(env["STREMIO_CREDS_KEY"]),
     dataDir: env["DATA_DIR"] || "/data",
     port,

@@ -1,4 +1,5 @@
 import type { PollTuning } from "./config.ts";
+import type { EventEnricher } from "./cinemeta.ts";
 import { aad, open, type Keys } from "./crypto.ts";
 import type { Account, Store } from "./db.ts";
 import { diffItem, tickSession, type Session } from "./diff.ts";
@@ -17,6 +18,8 @@ export type PollerDeps = {
   tuning: PollTuning;
   client: ClientInfo;
   log: Logger;
+  /** Adds exact ids to events just before they are sent. Without one, events go out as queued. */
+  cinemeta?: EventEnricher;
   now?: () => number;
   newSessionId?: (accountId: string, videoId: string, startedAt: number) => string;
 };
@@ -229,7 +232,7 @@ export class Poller {
       if (now < (store.getAccount(accountId)?.sendBlockedUntil ?? 0)) return;
       const rows = store.outboxDue(accountId, now, 50);
       if (rows.length === 0) return;
-      const outcome = await this.send(token, client, rows);
+      const outcome = await this.send(token, client, rows, await this.enrich(rows));
       if (outcome === "unauthorized") {
         log.warn("TofuTracker rejected the connection token; link again", { account: accountId.slice(0, 6) });
         store.setStatus(accountId, "needs_tofutracker_relink", this.now());
@@ -239,9 +242,26 @@ export class Poller {
     }
   }
 
-  private async send(token: string, client: ClientInfo, rows: OutboxRow[]): Promise<"done" | "retry" | "unauthorized"> {
+  /**
+   * The queued events with Cinemeta's exact ids added (cached, at most one 5 s lookup per
+   * series). The outbox keeps the events as queued; a failure here sends them unchanged.
+   */
+  private async enrich(rows: OutboxRow[]): Promise<ClientEvent[]> {
+    const events = rows.map((r) => r.event);
+    const { cinemeta, log } = this.deps;
+    if (!cinemeta) return events;
+    try {
+      const enriched = await cinemeta.enrichEvents(events);
+      return enriched.length === events.length ? enriched : events;
+    } catch (error) {
+      log.warn("enrichment failed; sending events as queued", { error });
+      return events;
+    }
+  }
+
+  private async send(token: string, client: ClientInfo, rows: OutboxRow[], events: ClientEvent[]): Promise<"done" | "retry" | "unauthorized"> {
     const { store, scrobbler, log } = this.deps;
-    const result = await scrobbler.postEvents(token, client, rows.map((r) => r.event));
+    const result = await scrobbler.postEvents(token, client, events);
     const ids = rows.map((r) => r.id);
     switch (result.kind) {
       case "accepted":
@@ -259,8 +279,8 @@ export class Poller {
           return "done";
         }
         const half = Math.ceil(rows.length / 2);
-        const first = await this.send(token, client, rows.slice(0, half));
-        return first === "done" ? this.send(token, client, rows.slice(half)) : first;
+        const first = await this.send(token, client, rows.slice(0, half), events.slice(0, half));
+        return first === "done" ? this.send(token, client, rows.slice(half), events.slice(half)) : first;
       }
       case "retry": {
         const now = this.now();

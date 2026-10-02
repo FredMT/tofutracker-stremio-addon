@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { createApp } from "./app.ts";
+import { CinemetaClient } from "./cinemeta.ts";
 import { loadConfig, ConfigError } from "./config.ts";
 import { deriveKeys } from "./crypto.ts";
 import { Store } from "./db.ts";
@@ -24,6 +25,7 @@ const main = async (): Promise<void> => {
     tuning: config.poll,
     client: { name: "stremio-addon", version: config.version, server: "Stremio" },
     log,
+    cinemeta: new CinemetaClient({ baseUrl: config.cinemetaUrl, log }),
   });
   const handle = createApp({ config, store, keys, stremio, scrobbler, poller, log });
   const server = createServer((req, res) => {
