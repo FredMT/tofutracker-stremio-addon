@@ -153,6 +153,13 @@ test("the configure page is HTML with a nonce-bound CSP and no caching", async (
   assert.ok(csp.includes("frame-ancestors 'none'") && csp.includes("default-src 'none'"));
   assert.ok(res.text.includes('id="app"'));
   assert.ok(res.text.includes("Install"));
+  // Everything the page loads is same-origin; links to other sites open in a new tab.
+  assert.ok(res.text.includes('src="/stremio/logo.png"'));
+  assert.ok(!/(src|href)="https?:/.test(res.text.split('<script nonce')[0] ?? ""), "no external assets");
+  assert.ok(res.text.includes("Copy code"));
+  assert.ok(res.text.includes("tofutracker.com/settings/scrobbling"));
+  assert.ok(res.text.includes('href: s.verificationUrl, target: "_blank"'));
+  assert.ok(res.text.includes("href: linkHref, target: \"_blank\""));
 });
 
 test("paths outside the prefix, the root and CORS preflight", async () => {

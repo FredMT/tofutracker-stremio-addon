@@ -12,37 +12,45 @@ export type PageBoot = {
 const escapeJson = (value: unknown): string =>
   JSON.stringify(value).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026");
 
+const escapeAttr = (value: string): string =>
+  value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
 const CSS = `
-:root{color-scheme:light dark;--bg:#fbfaf7;--fg:#1d1b17;--muted:#6b665d;--card:#fff;--line:#e4dfd3;--accent:#2f7d4f;--accent-fg:#fff;--warn:#a4410f}
-@media (prefers-color-scheme:dark){:root{--bg:#15130f;--fg:#f0ece3;--muted:#a39d90;--card:#1e1b16;--line:#322e26;--accent:#5bbd84;--accent-fg:#10261a;--warn:#ec9a67}}
+:root{color-scheme:dark;--bg:#0e131a;--fg:#e6edf3;--muted:#8b98a9;--card:#151c26;--line:#243040;--brand:#4fd1e5;--btn:#0b5d6b;--btn-fg:#fff;--ok:#5fd3b3;--warn:#f0a36b}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
 main{max-width:640px;margin:0 auto;padding:32px 16px 64px}
-h1{font-size:1.6rem;margin:0 0 4px}
+.brand{display:flex;align-items:center;gap:12px;margin:0 0 4px}
+.brand img{width:40px;height:40px;border-radius:10px;flex:none}
+h1{font-size:1.6rem;margin:0;color:var(--brand)}
 h2{font-size:1.05rem;margin:0}
 p{margin:8px 0}
+a{color:var(--brand)}
 .muted{color:var(--muted)}
 .lead{color:var(--muted);margin-bottom:24px}
 ol{list-style:none;padding:0;margin:0;display:grid;gap:12px}
 .step{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
 .step.off{opacity:.55}
 .head{display:flex;align-items:center;gap:10px}
-.n{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--line);font-size:.85rem;font-weight:600}
-.done .n{background:var(--accent);color:var(--accent-fg)}
+.n{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--line);color:var(--fg);font-size:.85rem;font-weight:600}
+.done .n{background:var(--ok);color:#06231c}
 .body{margin-top:12px}
-button,.btn{font:inherit;display:inline-block;border:1px solid var(--line);background:var(--card);color:var(--fg);padding:8px 14px;border-radius:8px;cursor:pointer;text-decoration:none}
-button.primary,.btn.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:600}
+button,.btn{font:inherit;display:inline-block;border:1px solid var(--line);background:transparent;color:var(--fg);padding:8px 14px;border-radius:8px;cursor:pointer;text-decoration:none}
+button:hover,.btn:hover{border-color:var(--brand)}
+button.primary,.btn.primary{background:var(--btn);color:var(--btn-fg);border-color:var(--btn);font-weight:600}
+button.primary:hover,.btn.primary:hover{border-color:var(--brand)}
+button:focus-visible,.btn:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
 button:disabled{opacity:.6;cursor:default}
 input{font:inherit;width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);margin:4px 0 10px}
 label{font-size:.9rem;color:var(--muted)}
-.code{font:600 1.8rem/1.2 ui-monospace,Menlo,monospace;letter-spacing:.12em;margin:8px 0}
+.code{font:600 1.8rem/1.2 ui-monospace,Menlo,monospace;letter-spacing:.12em;margin:8px 0;color:var(--brand)}
 .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
-.tabs button[aria-pressed=true]{border-color:var(--accent);font-weight:600}
+.tabs button[aria-pressed=true]{border-color:var(--brand);color:var(--brand);font-weight:600}
 .err{color:var(--warn);margin-top:8px}
-.ok{color:var(--accent)}
+.ok{color:var(--ok)}
 img.qr{width:140px;height:140px;border-radius:8px;background:#fff;padding:6px}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.row input{flex:1;min-width:220px;margin:0}
+.row input{flex:1;min-width:200px;margin:0}
 footer{margin-top:28px;font-size:.85rem;color:var(--muted)}
 `;
 
@@ -130,8 +138,11 @@ const JS = `
     body.push(el("div", { class: "tabs" }, tab("link", "Link code"), tab("password", "Email and password"), tab("key", "Auth key")));
     if (method === "link") {
       if (s.state === "waiting") {
-        body.push(el("p", {}, "Open ", el("a", { href: s.link, target: "_blank", rel: "noopener" }, boot.linkHost), " and enter this code. Sign in to Stremio there if asked."));
-        body.push(el("div", { class: "code" }, s.code));
+        // Stremio's create reply carries the link for this code; fall back to the bare host.
+        const linkHref = typeof s.link === "string" && s.link.startsWith("https://") ? s.link : "https://" + boot.linkHost;
+        const codeBtn = el("button", { onclick: () => copy(s.code, codeBtn) }, "Copy code");
+        body.push(el("p", {}, "Open ", el("a", { href: linkHref, target: "_blank", rel: "noopener" }, boot.linkHost), " and enter this code. Sign in to Stremio there if asked."));
+        body.push(el("div", { class: "row" }, el("span", { class: "code" }, s.code), codeBtn));
         if (s.qr) body.push(el("img", { class: "qr", src: s.qr, alt: "QR code for the Stremio link page" }));
         body.push(el("p", { class: "muted" }, "Waiting for you to enter the code…"));
       } else {
@@ -171,6 +182,7 @@ const JS = `
         el("p", { class: "muted" }, "Or paste this address into Stremio's addon search box. It is personal to you, so keep it private."),
         el("div", { class: "row" }, url, btn),
         el("p", { class: "muted" }, "The first sync only records your current library, so nothing old is imported."),
+        el("p", { class: "muted" }, "You can close this page. Manage or revoke this connection at ", el("a", { href: "https://tofutracker.com/settings/scrobbling", target: "_blank", rel: "noopener" }, "tofutracker.com/settings/scrobbling")),
       ];
     }
     const body = [el("button", { class: "primary", disabled: busy || !st.ready, onclick: () => run("finish", async () => { const r = await api("/setup/" + setupId + "/finish", "POST"); result = r; return st; }) }, boot.cfg ? "Save changes" : "Create my addon link")];
@@ -223,7 +235,7 @@ export const renderConfigurePage = (nonce: string, boot: PageBoot): string => `<
 </head>
 <body>
 <main>
-<h1>TofuTracker for Stremio</h1>
+<div class="brand"><img src="${escapeAttr(boot.basePath)}/logo.png" alt="" width="40" height="40"><h1>TofuTracker for Stremio</h1></div>
 <p class="lead">Link your accounts once. Stremio then adds what you watch to your TofuTracker library.</p>
 <div id="app"><noscript><p>This page needs JavaScript.</p></noscript></div>
 <footer>Open source (MIT). We store your Stremio sign-in encrypted and use it only to read your library. Unlink here at any time.</footer>
