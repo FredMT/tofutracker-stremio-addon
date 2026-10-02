@@ -179,3 +179,51 @@ export class FakeScrobbler {
     return this.closer?.() ?? Promise.resolve();
   }
 }
+
+export type FakeVideo = { id?: string; season?: number; episode?: number; tvdb_id?: unknown };
+export type FakeSeries = { tvdb_id?: unknown; moviedb_id?: unknown; videos?: FakeVideo[] };
+
+/** Cowboy Bebop as Cinemeta serves it (checked live 2026-10-02): its S1E2 is TVDB episode 219121. */
+export const BEBOP: FakeSeries = {
+  tvdb_id: 76885,
+  moviedb_id: 30991,
+  videos: [
+    { id: "tt0213338:1:1", season: 1, episode: 1, tvdb_id: 219120 },
+    { id: "tt0213338:1:2", season: 1, episode: 2, tvdb_id: 219121 },
+    { id: "tt0213338:1:3", season: 1, episode: 3, tvdb_id: 219122 },
+  ],
+};
+
+/** A fake Cinemeta: `/meta/series/{imdb}.json`. Unknown ids answer `{}` like the real one. */
+export class FakeCinemeta {
+  series = new Map<string, FakeSeries>();
+  calls: string[] = [];
+  /** "ok", an HTTP status, "destroy" (drop the connection) or "hang" (never answer). */
+  mode: "ok" | "destroy" | "hang" | number = "ok";
+  delayMs = 0;
+  url = "";
+  private closer: (() => Promise<void>) | null = null;
+
+  async start(): Promise<void> {
+    const srv = await listen((req, res) => {
+      const path = (req.url ?? "").split("?")[0] ?? "";
+      this.calls.push(path);
+      if (this.mode === "hang") return;
+      if (this.mode === "destroy") return void res.destroy();
+      const answer = (): void => {
+        if (typeof this.mode === "number") return reply(res, this.mode, {});
+        const imdb = /^\/meta\/series\/(tt\d+)\.json$/.exec(path)?.[1];
+        const found = imdb ? this.series.get(imdb) : undefined;
+        reply(res, 200, found && imdb ? { meta: { id: imdb, imdb_id: imdb, type: "series", ...found } } : {});
+      };
+      if (this.delayMs > 0) setTimeout(answer, this.delayMs);
+      else answer();
+    });
+    this.url = srv.url;
+    this.closer = srv.close;
+  }
+
+  stop(): Promise<void> {
+    return this.closer?.() ?? Promise.resolve();
+  }
+}
