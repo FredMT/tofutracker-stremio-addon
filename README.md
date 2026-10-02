@@ -12,7 +12,7 @@ It is a small Node 24 + TypeScript service with no runtime dependencies. State l
  Stremio apps ── open a video ──► GET /stremio/{cfg}/subtitles/…   (answers { "subtitles": [] }, wakes the poller)
 
  poller ──► api.strem.io  datastoreMeta (ids + mtimes) ─► datastoreGet (only the items that changed)
-        └─► diff against the last seen state ─► C1 events ─► POST {SCROBBLER_URL}/v1/events
+        └─► diff against the last seen state ─► C1 events ─► exact ids from Cinemeta ─► POST {SCROBBLER_URL}/v1/events
 ```
 
 - **Sign-in.** The configure page links two accounts. TofuTracker uses the device-code flow (C2): the page shows a code, you approve it on tofutracker.com. Stremio uses, in order of preference, a **link code** (Stremio's own `link.stremio.com` flow, works for Google and Facebook accounts and never shows us a password), **email and password** (exchanged once at `api.strem.io/api/login`, then forgotten) or a **pasted auth key**.
@@ -37,11 +37,30 @@ stremio-core updates a library item while you play: `video_id`, `time_offset`, `
 | `video_id` advanced with `time_offset` of 1 ms after a finished video         | `stop` for the finished video; no start for the next one |
 | a watched bit or `timesWatched` going down                                    | nothing (un-marking is not synced)                     |
 
-Ids: `tt…` is `ids.imdb`; episodes `tt…:S:E` add `season`, `episode` and `numbering: "imdb"`. `kitsu:ID` and `kitsu:ID:EP` become `ids.kitsu` (episode absolute, `season` and `numbering` null). Anything else (local files, YouTube, other catalogs) is ignored.
+Ids: `tt…` is `ids.imdb`; episodes `tt…:S:E` add `season`, `episode` and `numbering: "imdb"`, then get exact ids from Cinemeta (next section). `kitsu:ID` and `kitsu:ID:EP` become `ids.kitsu` (episode absolute, `season` and `numbering` null). Anything else (local files, YouTube, other catalogs) is ignored.
+
+### Exact episode ids from Cinemeta
+
+A Stremio video id like `tt0213338:1:2` uses IMDb/Cinemeta numbering, which differs from TVDB's for many anime (Cinemeta's Cowboy Bebop S1E2, "Stray Dog Strut", is TVDB episode 219121, which TVDB numbers S1E1). From the id alone the scrobbler can only guess the episode (`assumed`), and an assumed anime episode goes to a review queue or lands on the wrong episode. Cinemeta, the catalog Stremio itself uses for `tt…` ids, already knows the exact ids, so the addon asks it:
+
+```
+GET {CINEMETA_URL}/meta/series/tt0213338.json
+  meta.tvdb_id             76885    TVDB series id
+  meta.moviedb_id          30991    TMDB TV id
+  meta.videos[].id         "tt0213338:1:2"
+  meta.videos[].tvdb_id    219121   TVDB episode id
+```
+
+Every event for a `tt…:S:E` item (start, progress, pause, stop, watched, manual watched) is enriched just before it is sent: `ids.tvdb` is the series id, `ids.tmdb` the TMDB TV id and `episodeIds.tvdb` the video's own TVDB id. Each is added only when Cinemeta has a positive value for it. `ids.imdb`, `season`, `episode` and `numbering: "imdb"` stay as they are, and the session id does not change. The queued event is not modified, so a retry after a failure or restart is enriched as well.
+
+- **Fallbacks.** If Cinemeta is down, slow (5 s timeout), does not know the series or has no value for a field, the event goes out exactly as it did before this feature. Cinemeta never blocks or drops an event, and a `watched` event waits for it at most the timeout, once per series. Movies (`tt…` without season) and `kitsu:` ids are not looked up.
+- **Cache.** In memory, at most 500 series (least recently used first out). A found series is kept 24 h; "not found" and failures are kept 1 h, so an outage costs one wait per hour, not one per event. Concurrent lookups of one series share a single request. Nothing is stored on disk.
+- **Verified shapes** (live, 2026-10-02): `meta.videos[].tvdb_id` is the TVDB episode id (e.g. Cowboy Bebop `tt0213338:1:2` is 219121, Breaking Bad `tt0903747:1:1` is 349232). `meta.tvdb_id` and `meta.moviedb_id` can be absent (for example *The Three Stooges Show* has no `tvdb_id` anywhere), and an unknown id answers `{}` with HTTP 200 (after a redirect to `cinemeta-live.strem.io`), so absent, zero or non-numeric values are all treated as "no id". Large series are big (One Piece: 1.4 MB, 1242 videos); only the id map is kept.
+- **Privacy.** The only thing sent to Cinemeta is the series IMDb id (`tt…`) in the request URL, the same request any Stremio app makes. No account, token, library content, watch time or event is sent, and the request carries no cookies or identifiers.
 
 Limits worth knowing:
 
-- The watched bitfield is relative to the title's video list, which the addon does not fetch. A bit is named by counting back from the field's anchor inside the anchor's season (or the Kitsu title). A bulk "mark all as watched" that spans several seasons therefore reports the anchor's season only. At most 200 watched events are sent per item per poll.
+- The watched bitfield is relative to the title's video list, which the addon does not use for this (Cinemeta's list is only read for episode ids). A bit is named by counting back from the field's anchor inside the anchor's season (or the Kitsu title). A bulk "mark all as watched" that spans several seasons therefore reports the anchor's season only. At most 200 watched events are sent per item per poll.
 - Progress and pause timing has the resolution of Stremio's 90 s push interval plus the poll interval.
 - A video finished while nobody polled shows up as `start`, `watched`, `stop` in one batch.
 
@@ -75,6 +94,7 @@ Environment variables (see `.env.example`):
 | `SCROBBLER_URL`     | `http://scrobbler:8080`                  | Scrobbler base URL (`/v1/pair/*`, `/v1/events`).                            |
 | `DATA_DIR`          | `/data`                                  | Where `stremio-addon.sqlite` lives.                                         |
 | `PORT`              | `7000`                                   | Listen port.                                                                |
+| `CINEMETA_URL`      | `https://v3-cinemeta.strem.io`           | Where exact TVDB ids for `tt…:S:E` videos come from.                        |
 | `STREMIO_API_URL`, `STREMIO_LINK_URL` | the real hosts         | Only to point tests at a fake server.                                       |
 
 Two subkeys are derived from `STREMIO_CREDS_KEY` with HKDF: one for AES-256-GCM, one for HMAC-SHA256. Stored Stremio auth keys and TofuTracker connection tokens are encrypted with the owner (account id plus column name) as associated data, so a value copied into another row fails to open. Losing or changing the key means every user has to set the addon up again.
@@ -133,6 +153,7 @@ src/app.ts               routes: manifest, subtitles, configure page, setup API,
 src/pages.ts             the configure page (inline CSS and JS)
 src/poller.ts            scheduling, library polling, outbox delivery, backoff
 src/diff.ts              library item change -> C1 events, session pause/stop timing
+src/cinemeta.ts          Cinemeta client: exact TVDB/TMDB ids for episodes, cached
 src/library.ts           tolerant parsing of library items
 src/watched.ts           decoder for the `watched` field
 src/stremio-api.ts       Stremio client (login, link code, datastore, getUser)
@@ -142,7 +163,7 @@ src/crypto.ts, cfg.ts    AES-256-GCM, HMAC, the {cfg} segment
 src/manifest.ts, events.ts, ids.ts, config.ts, log.ts, healthcheck.ts
 assets/                  logo.png and background.png served by the manifest routes
 scripts/make-assets.ts   generates assets/ (no dependencies)
-test/                    node:test; fake Stremio and scrobbler HTTP servers in helpers.ts
+test/                    node:test; fake Stremio, scrobbler and Cinemeta HTTP servers in helpers.ts
 ```
 
 ## License
